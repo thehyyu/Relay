@@ -121,6 +121,75 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 
 ---
 
+## 架構決策（ADR）
+
+> 記錄每個非顯而易見的選型決策。格式：背景 → 選項 → 決策 → 影響。
+
+### ADR-001：不使用 LLM 框架
+
+**狀態：** accepted
+
+**背景：** AutoGen、LangGraph、CrewAI 都能快速搭建 multi-agent 系統。
+
+**選項：**
+- A：使用現有框架（快速上手，但黑盒）
+- B：從 raw API 自己組
+
+**決策：** 選 B。框架把 agent loop、tool dispatch、orchestration 都藏起來了，用框架等於跳過了這個專案最核心的學習目標。
+
+**影響：** 程式碼量增加，但每一行都知道為什麼在那裡。
+
+---
+
+### ADR-002：Search Agent 使用靜態語料庫
+
+**狀態：** accepted
+
+**背景：** Research system 的 Search Agent 可以搜網路（即時）或搜本地語料庫（靜態）。
+
+**選項：**
+- A：串接 Web Search API（Brave / Serper）
+- B：預先 index 靜態文件集，用 ChromaDB 語意搜尋
+
+**決策：** 選 B。學習重點是部署架構，不是 Search Agent 的能力。靜態語料庫完全離線、無外部依賴，複雜度預算留給架構演化。
+
+**影響：** 系統只能回答語料庫內的問題，定位是「文件問答系統」而非「通用研究工具」。
+
+---
+
+### ADR-003：開發期透過 Tailscale 存取 Mac mini Ollama
+
+**狀態：** accepted
+
+**背景：** Ollama 在 Mac mini，開發在 MacBook（SSH 進 Mac mini）。需要決定如何讓 script 連到 Ollama。
+
+**選項：**
+- A：SSH port forwarding
+- B：Tailscale（已有）
+- C：開放 LAN IP
+
+**決策：** 選 B。Tailscale 已安裝、一直在線、不需手動建 tunnel，且不暴露到公開網路。設 `OLLAMA_HOST=0.0.0.0` 讓 Ollama 同時聽 localhost 和 Tailscale 介面，避免破壞 Echoforge 的 poll.py。
+
+**影響：** 學習完成後移除 `OLLAMA_HOST` 設定，script 搬到 Mac mini 直接執行（同 Echoforge 模式）。
+
+---
+
+### ADR-004：加入 ChromaDB 作為向量資料庫
+
+**狀態：** accepted
+
+**背景：** 原始設計是純 stateless agent pipeline，沒有 DB 角色。
+
+**選項：**
+- A：維持無 DB 設計
+- B：加入 ChromaDB
+
+**決策：** 選 B。加入 DB 讓架構演化更有意義：v2b 的 K8s 部署會碰到 StatefulSet + PersistentVolumeClaim，這是 Deployment vs StatefulSet 最核心的差異，也是面試常問的概念。
+
+**影響：** 每個部署版本都需要處理 ChromaDB 的有狀態性，複雜度可控且學習價值高。
+
+---
+
 ## AI 協作守則
 
 1. **最小修改原則：** 每次只做達成當前節點的最小修改，不動無關模組
@@ -135,16 +204,20 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 ## 當前狀態
 
 **最後更新：** 2026-04-23  
-**目前進度：** 規格確立，尚未開始開發
+**目前進度：** Branch 1 進行中
+
+### 已完成
+- [x] Branch 0：環境就緒
+- [x] Branch 0.5：曳光彈（pipeline 走通，Search Agent 使用假資料）
+
+### Branch 0 DoD：
+- [x] Mac mini 上 Ollama 綁定 Tailscale 介面（`OLLAMA_HOST` 設為 Mac mini 的 Tailscale IP），`curl $OLLAMA_BASE_URL/api/tags` 從 MacBook 回傳正常
+- [x] `.env` 建立（不進 git），填入 `OLLAMA_BASE_URL`；`.env.example` 作為範本進 git
+- [x] `uv` 安裝完成，可建立 venv 並安裝 `httpx`
+- [x] 一支測試腳本讀取 `OLLAMA_BASE_URL`，對 Ollama 送出 chat request 並拿到回應
 
 ### 下一步
-- [ ] Branch 0：環境就緒確認
-
-**Branch 0 DoD：**
-- [ ] Mac mini 上 Ollama 綁定 Tailscale 介面（`OLLAMA_HOST` 設為 Mac mini 的 Tailscale IP），`curl $OLLAMA_BASE_URL/api/tags` 從 MacBook 回傳正常
-- [ ] `.env` 建立（不進 git），填入 `OLLAMA_BASE_URL`；`.env.example` 作為範本進 git
-- [ ] `uv` 安裝完成，可建立 venv 並安裝 `httpx`
-- [ ] 一支測試腳本讀取 `OLLAMA_BASE_URL`，對 Ollama 送出 chat request 並拿到回應
+- [ ] Branch 1：v1 Monolith 完整版（ChromaDB 語意搜尋 + ReAct pattern）
 
 **連線架構（開發期）：**
 ```
