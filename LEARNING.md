@@ -39,7 +39,7 @@ response = httpx.post("http://mac-mini:11434/api/chat", json={
 ```
 
 **學習後的體會：**  
-_（完成 Branch 0.5 後填寫）_
+Ollama 的 API 和 OpenAI 幾乎一樣，`/api/chat` 接收 messages array，回傳 message 物件。真正的差異在部署：OpenAI 是呼叫遠端 API，Ollama 是呼叫本機 HTTP server。`stream: false` 讓 response 一次回來，適合 agent 場景（需要完整回應才能決定下一步）。
 
 ---
 
@@ -147,7 +147,7 @@ _（完成 Branch 3 後填寫）_
 > 每完成一個 Branch，用一段話更新這裡，練習用面試語言描述自己做了什麼。
 
 **Branch 0.5 完成後：**  
-_（填寫）_
+「我用 Python 從零搭建了一個 multi-agent research pipeline，沒有使用任何 agent 框架。Orchestrator 呼叫 Search、Summarize、Write 三個 agent，每個 agent 都是一個獨立函式，透過 Ollama 本地 LLM 處理任務。這個版本的 Search Agent 用 hardcode 假資料，讓整條 pipeline 先跑通，確認架構方向正確再逐步補強。」
 
 **Branch 1 完成後：**  
 _（填寫）_
