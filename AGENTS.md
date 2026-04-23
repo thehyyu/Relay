@@ -375,7 +375,123 @@ v2/
 - [x] 各服務端點的 unit test（FastAPI TestClient，8 tests 全過）
 - [x] LEARNING.md 填寫 FastAPI / Docker Compose 學習體會
 
+### Branch 2a+ Spec：v2a 收尾 — Orchestrator 分層重構
+
+**目標：** 進入 K8s 前，把 orchestrator/main.py 拆層，展示 Clean Architecture Dependency Rule：Use Case 不依賴 Infrastructure。
+
+#### 目錄結構變更
+
+```
+v2/services/orchestrator/
+├── main.py      # 只剩 FastAPI app + 路由，呼叫 react.run_react_loop()
+├── react.py     # ReAct loop，接受 dispatch: Callable[[str, dict], str]，不 import httpx
+└── clients.py   # HTTP adapter，封裝所有 httpx.post 呼叫
+```
+
+#### 核心原則
+
+- `react.py` 的 `run_react_loop(question, dispatch)` 不 import httpx，也不 import FastAPI
+- `clients.py` 實作 `make_dispatch(search_url, summarize_url, write_url) → Callable`
+- `main.py` 把 `clients.make_dispatch(...)` 傳進 `react.run_react_loop()`
+- 測試時可傳 mock dispatch，完全繞開 HTTP，不需要 `patch("httpx.post")`
+
+#### Branch 2a+ DoD
+
+- [ ] orchestrator 拆成 main.py / react.py / clients.py，對外行為不變
+- [ ] react.py 的 unit test 直接傳 mock dispatch，不 mock httpx
+- [ ] `docker compose up --build` 仍正常，`curl /query` 仍回傳合理答案
+
+---
+
+### Branch 2b Spec：v2 K8s — 遷移至 minikube
+
+**目標：** 把 v2a 的 Docker Compose 部署遷移至 minikube，學習 K8s 核心資源物件，並加入分散式系統的韌性與可觀測性基礎設施。
+
+#### 學習重點
+
+| 概念 | 對應工作 |
+|---|---|
+| Deployment vs StatefulSet | 4 個 agent → Deployment；ChromaDB → StatefulSet + PVC |
+| Service + Ingress | 服務發現與外部存取 |
+| Liveness / Readiness Probe | 對應 `/health/live` 和 `/health/ready` |
+| Rolling Update | 模擬版本升級，觀察 zero-downtime 行為 |
+| Availability Tactic | Retry with Exponential Backoff |
+| Observability | Correlation ID 跨服務追蹤 |
+
+#### 新增規格
+
+**1. Liveness / Readiness 分離（4 個服務）**
+
+所有服務加兩個 health endpoint：
+- `GET /health/live` → 永遠 200，表示 process 存活（K8s livenessProbe）
+- `GET /health/ready` → 暖機完成才 200，表示可以接流量（K8s readinessProbe）
+
+search service 在 lifespan 的 ChromaDB warmup 結束後設 `_ready = True`；其餘三個服務啟動即 ready。
+
+K8s YAML 對應：
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 8000
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 8000
+```
+
+**2. Retry with Exponential Backoff（orchestrator clients.py）**
+
+在 `clients.py` 的每個下游呼叫加 tenacity retry：
+```python
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
+def call_search(url: str, query: str) -> list[str]: ...
+```
+演練目標：手動 `kubectl delete pod <search-pod>`，觀察 orchestrator 自動重試並恢復。
+對應 Availability Tactic（Retry）。
+
+**3. Correlation ID 傳播（X-Request-ID）**
+
+orchestrator middleware 對每個進來的 request 產生 UUID，透過 header 傳給下游：
+```python
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    # 在 clients.py 的 httpx.post 帶入 headers={"X-Request-ID": request_id}
+```
+下游服務讀取 header 並印在 log 裡，讓 `kubectl logs` 可以 grep 同一個 request 的全程 trace。
+對應 Observability（分散式系統的最基礎追蹤工具）。
+
+#### Branch 2b DoD
+
+- [ ] 所有服務加 `/health/live` 和 `/health/ready`，search 的 ready 等 ChromaDB warmup 完成
+- [ ] orchestrator 加 Retry（tenacity），kill search pod 後自動重試恢復
+- [ ] orchestrator 加 Correlation ID middleware，`kubectl logs` 可 grep 跨服務 trace
+- [ ] 4 個 agent 各有 Deployment YAML，ChromaDB 有 StatefulSet + PVC YAML
+- [ ] `kubectl apply -f k8s/` 後，`kubectl get pods` 全部 Running
+- [ ] `curl <minikube-ip>/query` 回傳合理答案
+- [ ] Rolling update 演練：更新一個服務的 image tag，觀察 pod 滾動替換過程
+- [ ] Kill pod 演練：`kubectl delete pod <search-pod>`，觀察自動重啟 + retry 恢復
+- [ ] LEARNING.md 填寫 K8s / Retry / Correlation ID 學習體會
+
+---
+
+### Branch 4 Spec（預告）：收尾 — 架構圖、README、blog 素材
+
+**目標：** 整理三個部署版本的架構文件，產出可放作品集的最終成果。
+
+#### 產出清單
+
+- **C&C View（Docker Compose 版）**：Mermaid diagram 顯示 orchestrator 如何透過 HTTP 呼叫各服務、各服務如何連到 ChromaDB / Ollama
+- **C&C View（K8s 版）**：同上，但以 Pod / Service / Ingress 層級表示，對比 Docker Compose 版
+- **Deployment View**：軟體元素映射到硬體（Mac mini）與容器環境的圖
+- **三版本對比表**：v1 monolith vs v2a Docker vs v2b K8s vs v3 hybrid，從擴展性、修改成本、複雜度三個維度比較
+- **選型 Rationale**：每個架構決策的「為什麼選這個、放棄了什麼」（對應 ADR 的敘事版本）
+
+---
+
 ### 下一步
+- [ ] Branch 2a+：v2a 收尾 — Orchestrator 分層重構
 - [ ] Branch 2b：v2 K8s — 遷移至 minikube
 
 **連線架構（開發期）：**
