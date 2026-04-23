@@ -86,32 +86,65 @@ _（完成 Branch 2a 後填寫）_
 
 **它是什麼：** Image 是「程式碼 + 執行環境」的完整快照，Container 是 Image 的執行實例。
 
-**對應公司的 Java 產品演化路徑：**
-
-```
-WAR on VM（舊）
-  └── VM 裡裝好 JDK + Tomcat，再把 WAR 丟進去
-  └── 問題：環境靠人工維護，機器間不一致，擴展要複製整台 VM
-
-↓
-
-Docker Image（新）
-  └── JDK + Tomcat + WAR 全部打包成一個 Image
-  └── 任何有 Docker 的機器，跑起來都一樣
-  └── 擴展 = 多跑幾個 Container，不需要複製 OS
-
-↓
-
-K8s
-  └── 自動管理這些 Container：幾個副本、哪個掛了重啟、怎麼更新
-```
-
 **Image vs Container：**
 - Image = 食譜（靜態、不可變、可版本控制）
 - Container = 照食譜煮出來的菜（執行中的實例）
 - 一個 Image 可以同時跑出多個 Container（水平擴展的基礎）
 
-**為什麼用它：** Relay 的每個 agent 從 function 變成獨立 Image，才能做到「各自部署、各自擴展」，這就是 v2a 的目標。
+---
+
+### Java 封裝格式歷史沿革（JAR / WAR）
+
+**JAR（Java ARchive）** — 通用格式，兩種用法：
+- **Library JAR**：給其他程式引用的函式庫，沒有 main，不能直接跑
+- **Fat JAR / Executable JAR**：Spring Boot 常用，把程式碼 + 所有依賴 + 內嵌 Tomcat 全部打包，直接 `java -jar myapp.jar` 啟動
+
+**WAR（Web Application ARchive）** — 專給 web 應用，需部署到外部 app server（Tomcat、JBoss、WebLogic）才能跑
+
+| | WAR | Fat JAR（Spring Boot）|
+|---|---|---|
+| 需要外部 Tomcat | ✅ 需要 | ❌ 不需要（內嵌） |
+| 啟動方式 | 丟進 Tomcat webapps/ | `java -jar` |
+| 容器化難度 | Image 裡要先裝 Tomcat | 直接 `FROM openjdk` 即可 |
+
+**公司產品的演化路徑：**
+
+```
+WAR on VM（最舊）
+  └── VM 裡人工裝 JDK + Tomcat，把 WAR 丟進去
+  └── 問題：環境靠人工維護，機器間不一致，擴展要複製整台 VM
+
+↓
+
+支援 Docker（改版後）
+  └── 若已改 Spring Boot Fat JAR：Image = openjdk + jar，乾淨簡單
+  └── 若仍用 WAR：Image = openjdk + Tomcat + war，較重但一樣可以跑
+  └── 好處：環境一致、啟動秒級、Image 可版本控制
+
+↓
+
+支援 K8s
+  └── 自動管理 Container：副本數、故障重啟、rolling update
+```
+
+---
+
+### 對應到 Relay 專案（Python）
+
+Python 沒有 JAR/WAR，但概念完全對應：
+
+| Java 世界 | Python / Relay |
+|---|---|
+| WAR（需外部 Tomcat） | 無對應（Python 沒有外部 app server 的傳統） |
+| Fat JAR（內嵌 Tomcat） | FastAPI + uvicorn（uvicorn 就是內嵌的 ASGI server） |
+| `java -jar myapp.jar` | `uvicorn app:app` 或 `python main.py` |
+| Docker Image（含 JDK + jar） | Docker Image（含 Python + 依賴 + FastAPI app） |
+
+**Branch 1（現在）：** 直接跑 `python main.py`，等同於最舊的「裸機執行」，連 jar 都還沒有。
+
+**Branch 2a（下一步）：** 每個 agent 包成 FastAPI + uvicorn，打包成 Docker Image，等同於 Fat JAR → Docker 這一步。
+
+**為什麼用它：** 每個 agent 有了自己的 Image，才能做到「各自部署、各自擴展」。
 
 **學習後的體會：**  
 _（完成 Branch 2a 後填寫）_
