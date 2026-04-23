@@ -90,7 +90,7 @@ def orchestrator(question: str) -> str:
         {"role": "user", "content": question},
     ]
 
-    for _ in range(MAX_ITER):
+    for i in range(MAX_ITER):
         response = httpx.post(
             f"{base_url}/api/chat",
             json={"model": OLLAMA_MODEL, "messages": messages, "tools": TOOLS, "stream": False},
@@ -101,14 +101,19 @@ def orchestrator(question: str) -> str:
         messages.append(msg)
 
         if not msg.get("tool_calls"):
-            return msg.get("content", "（無回答）")
+            answer = msg.get("content", "（無回答）")
+            print(f"[ITER {i+1}] LLM → FINAL: {answer[:80]}{'...' if len(answer) > 80 else ''}")
+            return answer
 
         for tc in msg["tool_calls"]:
             name = tc["function"]["name"]
             args = tc["function"]["arguments"]
             if isinstance(args, str):
                 args = json.loads(args)
+            print(f"[ITER {i+1}] LLM → TOOL: {name}({json.dumps(args, ensure_ascii=False)})")
             result = dispatch(name, args)
+            preview = result[:120] + "..." if len(result) > 120 else result
+            print(f"[ITER {i+1}] TOOL → LLM: {preview}")
             messages.append({"role": "tool", "content": result})
 
     return "（超過最大迭代次數）"
