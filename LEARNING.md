@@ -8,14 +8,16 @@
 
 | 概念 | 學習狀態 | 對標企業場景 |
 |---|---|---|
-| Ollama 本地 LLM 呼叫 | 未開始 | 私有部署、資料不出境的企業需求 |
-| Tool use / function calling | 未開始 | 所有 LLM agent 框架的底層機制 |
-| Agent loop（ReAct pattern） | 未開始 | AutoGen / LangGraph 的核心邏輯 |
-| Orchestrator pattern | 未開始 | 企業 AI workflow 編排 |
+| Ollama 本地 LLM 呼叫 | ✅ 完成 | 私有部署、資料不出境的企業需求 |
+| Tool use / function calling | ✅ 完成 | 所有 LLM agent 框架的底層機制 |
+| Agent loop（ReAct pattern） | ✅ 完成 | AutoGen / LangGraph 的核心邏輯 |
+| Orchestrator pattern | ✅ 完成 | 企業 AI workflow 編排 |
 | FastAPI 服務設計 | 未開始 | 微服務 API 契約 |
 | Docker Compose 多服務編排 | 未開始 | 本地模擬多容器環境 |
 | K8s：Deployment / Service / Ingress | 未開始 | 企業容器編排標準 |
 | K8s：rolling update / health check | 未開始 | 零停機部署 |
+| K8s：Application-level HA（replicas + probe） | 未開始 | Pod 失效自動重建、流量切換 |
+| DB 主從式架構（Primary-Replica） | 另立專案 | 客戶端備援設計最常被問的題目 |
 | Message queue（RabbitMQ / Redis） | 未開始 | Azure Service Bus / AWS SQS / Kafka |
 | Serverless function 觸發 | 未開始 | Azure Functions / Lambda |
 | 冷啟動 vs 常駐容器取捨 | 未開始 | 架構選型面試必答題 |
@@ -103,6 +105,32 @@ _（完成 Branch 2b 後填寫）_
 **為什麼用它：** 零停機部署的核心機制，面試必問。  
 **學習後的體會：**  
 _（完成 Branch 2b 後填寫）_
+
+---
+
+## K8s：Application-level HA
+
+**它是什麼：** 透過 Deployment 的 `replicas` 設定多個 pod 副本，任一 pod 死掉 K8s 自動重建並將流量切到健康的 pod。
+
+**為什麼用它：** 這是客戶端最常問「如何做備援」的應用層答案。和 DB 主從不同，這裡處理的是 stateless 服務的高可用。
+
+**在 Branch 2b 的練習：**
+1. 將 agent Deployment 的 `replicas` 設為 2
+2. 手動 `kubectl delete pod <pod-name>` 模擬 pod 故障
+3. 觀察 K8s 自動重建，Service 持續可用
+
+**學習後的體會：**  
+_（完成 Branch 2b 後填寫）_
+
+---
+
+## DB 主從式架構（Primary-Replica）
+
+**它是什麼：** 資料庫的備援設計。Primary 處理寫入，Replica 同步 Primary 的資料並處理讀取。Primary 故障時，Replica 升主（Failover）繼續服務。
+
+**為什麼重要：** 客戶端被問「你們的備援怎麼設計」，99% 是在問這個。
+
+**學習方式：** 另立專案，以 PostgreSQL streaming replication 為主題實作。本專案（ChromaDB）不支援 replication，不在此學。
 
 ---
 

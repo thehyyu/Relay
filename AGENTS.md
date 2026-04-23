@@ -54,7 +54,7 @@ Orchestrator 的最小定義：
 |---|---|---|---|
 | **v1 monolith** | 單一 Python script | Ollama（Mac mini，免費） | tool use、agent loop、prompt 設計、ReAct pattern、ChromaDB 本地檔案存取 |
 | **v2a microservices** | 每個 agent 是一個 FastAPI 服務，Docker Compose | Ollama（Mac mini，免費） | 服務拆分、API 契約、容器化、服務間通訊、ChromaDB 獨立容器 + volume mounting |
-| **v2b K8s** | 同 v2a 遷移至 minikube | Ollama（Mac mini，免費） | Deployment / Service / Ingress、rolling update、**StatefulSet + PersistentVolumeClaim（ChromaDB）** |
+| **v2b K8s** | 同 v2a 遷移至 minikube | Ollama（Mac mini，免費） | Deployment / Service / Ingress、rolling update、**StatefulSet + PersistentVolumeClaim（ChromaDB）**、Application-level HA（replicas + kill pod 演練） |
 | **v3 hybrid** | Orchestrator 容器化，短任務 agent 用 serverless | Claude API（付費，v3 才開始） | 事件驅動、message queue、冷啟動取捨、混合架構選型、有狀態與無狀態服務混合部署 |
 
 每個版本完成後：一張架構圖 + 一份選型說明 + 一篇 README 文章，最後會把三個部署版本寫在同一份 README。
@@ -204,11 +204,12 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 ## 當前狀態
 
 **最後更新：** 2026-04-23  
-**目前進度：** Branch 1 進行中
+**目前進度：** Branch 2a 進行中
 
 ### 已完成
 - [x] Branch 0：環境就緒
 - [x] Branch 0.5：曳光彈（pipeline 走通，Search Agent 使用假資料）
+- [x] Branch 1：v1 Monolith 完整版（ChromaDB + ReAct pattern + unit tests）
 
 ### Branch 0 DoD：
 - [x] Mac mini 上 Ollama 綁定 Tailscale 介面（`OLLAMA_HOST` 設為 Mac mini 的 Tailscale IP），`curl $OLLAMA_BASE_URL/api/tags` 從 MacBook 回傳正常
@@ -216,8 +217,16 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 - [x] `uv` 安裝完成，可建立 venv 並安裝 `httpx`
 - [x] 一支測試腳本讀取 `OLLAMA_BASE_URL`，對 Ollama 送出 chat request 並拿到回應
 
+### Branch 1 DoD：
+- [x] 語料庫已 index 進 ChromaDB，Search Agent 可做語意搜尋（不再用假資料）
+- [x] Orchestrator 用 ReAct pattern 驅動：LLM 透過 tool use 自行決定呼叫順序
+- [x] Agent loop 有明確終止條件：成功（LLM 無 tool call）、失敗（超過 MAX_ITER）
+- [x] 問語料庫內的問題，得到合理的完整回答
+- [x] 問語料庫外的問題，系統不崩潰（回傳「找不到相關資料」而非 exception）
+- [x] unit test 覆蓋：loop 終止條件、dispatch 路由邏輯
+
 ### 下一步
-- [ ] Branch 1：v1 Monolith 完整版（ChromaDB 語意搜尋 + ReAct pattern）
+- [ ] Branch 2a：v2 Microservices — Docker Compose
 
 **連線架構（開發期）：**
 ```
