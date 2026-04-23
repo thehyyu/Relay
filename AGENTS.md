@@ -70,6 +70,26 @@ v3              →  Claude API（展示雲端 vs 本地 LLM 選型差異）
 
 ---
 
+## 基礎設施工具（一次性安裝）
+
+```bash
+brew install colima docker docker-compose kubectl minikube
+```
+
+| 工具 | 用途 | 從哪個 Branch 開始用 |
+|---|---|---|
+| `colima` | Docker runtime（輕量 VM，SSH 友好，不需 GUI） | 2a |
+| `docker` | Docker CLI | 2a |
+| `docker-compose` | 多容器編排 | 2a |
+| `kubectl` | K8s 操作指令 | 2b |
+| `minikube` | 本地 K8s cluster，使用 Docker（colima）作為 driver | 2b |
+
+**為什麼選 Colima 而非 Docker Desktop：** Mac mini 透過 SSH 使用，沒有 GUI 環境，Docker Desktop 需要圖形介面才能完成初始設定。Colima 是純 CLI 的 Docker runtime，SSH 下完全正常。
+
+**Branch 3 的 message queue（Redis）：** 直接跑在 Docker 容器裡，不需要額外工具。Cloud CLI（AWS / Azure）等到 Branch 3 實際選定雲端服務後再安裝。
+
+---
+
 ## Tech Stack
 
 - **語言：** Python
@@ -187,6 +207,22 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 **決策：** 選 B。加入 DB 讓架構演化更有意義：v2b 的 K8s 部署會碰到 StatefulSet + PersistentVolumeClaim，這是 Deployment vs StatefulSet 最核心的差異，也是面試常問的概念。
 
 **影響：** 每個部署版本都需要處理 ChromaDB 的有狀態性，複雜度可控且學習價值高。
+
+---
+
+### ADR-005：Search 服務在啟動時預熱 ChromaDB
+
+**狀態：** accepted
+
+**背景：** v2a 容器化後，Search 服務收到第一個請求時才初始化 ChromaDB client 並載入 ONNX embedding model，冷啟動時間超過 120 秒，導致 orchestrator 的 HTTP 呼叫 timeout。
+
+**選項：**
+- A：繼續在每次請求時建立 client，只加大 timeout
+- B：使用 FastAPI `lifespan` 在服務啟動時初始化 client 並執行一次暖機查詢，之後複用
+
+**決策：** 選 B。選 A 只是把問題延後，ONNX model 載入本來就慢，timeout 數字會變得很魔法。選 B 是修正根本原因：把「首次載入」的成本移到啟動期，請求期完全複用已載入的 model，符合 FastAPI 的標準做法。
+
+**影響：** Search 服務啟動時多等幾秒（暖機），但之後所有查詢都快速回應。這個模式在 v2b K8s 的 readiness probe 設計中也有對應：pod 暖機完成才被標為 Ready，才開始接流量。
 
 ---
 
