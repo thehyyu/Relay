@@ -13,9 +13,9 @@
 | Agent loop（ReAct pattern） | ✅ 完成 | AutoGen / LangGraph 的核心邏輯 |
 | Orchestrator pattern | ✅ 完成 | 企業 AI workflow 編排 |
 | 可觀察性（Observability）演進 | ✅ 完成 | 從 print 到雲端集中 logging 的路徑 |
-| FastAPI 服務設計 | 未開始 | 微服務 API 契約 |
-| Docker Image 與容器化 | 未開始 | 對標公司 Java WAR → Docker 遷移路徑 |
-| Docker Compose 多服務編排 | 未開始 | 本地模擬多容器環境 |
+| FastAPI 服務設計 | ✅ 完成 | 微服務 API 契約 |
+| Docker Image 與容器化 | ✅ 完成 | 對標公司 Java WAR → Docker 遷移路徑 |
+| Docker Compose 多服務編排 | ✅ 完成 | 本地模擬多容器環境 |
 | K8s：Deployment / Service / Ingress | 未開始 | 企業容器編排標準 |
 | K8s：rolling update / health check | 未開始 | 零停機部署 |
 | K8s：Application-level HA（replicas + probe） | 未開始 | Pod 失效自動重建、流量切換 |
@@ -394,7 +394,10 @@ _（完成 Branch 3 後填寫）_
 「我用 Python 從零搭建了一個 multi-agent research pipeline，沒有使用任何 agent 框架。Orchestrator 呼叫 Search、Summarize、Write 三個 agent，每個 agent 都是一個獨立函式，透過 Ollama 本地 LLM 處理任務。這個版本的 Search Agent 用 hardcode 假資料，讓整條 pipeline 先跑通，確認架構方向正確再逐步補強。」
 
 **Branch 1 完成後：**  
-_（填寫）_
+「我為 v1 Monolith 實作了 ChromaDB 語意搜尋，取代假資料的 Search Agent。核心是 ReAct pattern 的 agent loop：LLM 透過 tool use 自行決定呼叫 search、summarize、write_answer 的順序，loop 有明確終止條件（無 tool call 或超過 MAX_ITER）。整個 pipeline 在單一 Python process 內跑通，並用 unit test 覆蓋了 loop 終止條件和 dispatch 路由邏輯。」
+
+**Branch 2a 完成後：**  
+「我把 v1 的四個 Python 函式各自包成獨立 FastAPI 服務，用 Docker Compose 一鍵啟動。核心架構變化是 orchestrator 從直接呼叫 Python 函式，改成對其他容器發 HTTP POST。服務間透過 Docker Compose 內部網路用 service name 互連，ChromaDB 資料用 volume mount 共享。過程中遇到 ChromaDB ONNX model 冷啟動 timeout 問題，用 FastAPI lifespan 預熱解決，並記錄為 ADR-005。」
 
 **Branch 2b 完成後：**  
 _（填寫）_

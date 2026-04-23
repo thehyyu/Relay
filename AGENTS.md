@@ -240,12 +240,13 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 ## 當前狀態
 
 **最後更新：** 2026-04-23  
-**目前進度：** Branch 2a 進行中
+**目前進度：** Branch 2b 進行中
 
 ### 已完成
 - [x] Branch 0：環境就緒
 - [x] Branch 0.5：曳光彈（pipeline 走通，Search Agent 使用假資料）
 - [x] Branch 1：v1 Monolith 完整版（ChromaDB + ReAct pattern + unit tests）
+- [x] Branch 2a：v2 Microservices — Docker Compose（4 個 FastAPI 服務 + 8 unit tests）
 
 ### Branch 0 DoD：
 - [x] Mac mini 上 Ollama 綁定 Tailscale 介面（`OLLAMA_HOST` 設為 Mac mini 的 Tailscale IP），`curl $OLLAMA_BASE_URL/api/tags` 從 MacBook 回傳正常
@@ -366,16 +367,16 @@ v2/
 
 #### Branch 2a DoD
 
-- [ ] `v2/` 目錄建立，4 個服務各有 `main.py`、`Dockerfile`、`requirements.txt`
-- [ ] `docker-compose.yml` 定義 4 個服務 + ChromaDB volume mount
-- [ ] `docker compose up --build` 啟動無報錯
-- [ ] `curl -X POST localhost:8000/query -H "Content-Type: application/json" -d '{"question":"什麼是 K8s？"}'` 回傳合理答案
-- [ ] `docker compose logs -f orchestrator` 看到 `[ITER N]` ReAct loop 輸出
-- [ ] 各服務端點的 unit test（FastAPI TestClient）
-- [ ] LEARNING.md 填寫 FastAPI / Docker Compose 學習體會
+- [x] `v2/` 目錄建立，4 個服務各有 `main.py`、`Dockerfile`、`requirements.txt`
+- [x] `docker-compose.yml` 定義 4 個服務 + ChromaDB volume mount
+- [x] `docker compose up --build` 啟動無報錯
+- [x] `curl -X POST localhost:8000/query -H "Content-Type: application/json" -d '{"question":"什麼是 K8s？"}'` 回傳合理答案
+- [x] `docker compose logs -f orchestrator` 看到 `[ITER N]` ReAct loop 輸出
+- [x] 各服務端點的 unit test（FastAPI TestClient，8 tests 全過）
+- [x] LEARNING.md 填寫 FastAPI / Docker Compose 學習體會
 
 ### 下一步
-- [ ] Branch 2a：v2 Microservices — Docker Compose
+- [ ] Branch 2b：v2 K8s — 遷移至 minikube
 
 **連線架構（開發期）：**
 ```
