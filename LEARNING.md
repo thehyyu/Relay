@@ -131,6 +131,23 @@ _（完成 Branch 1 後填寫）_
 
 ---
 
+## 部署版本命名慣例（Branch 命名邏輯）
+
+**數字變 = 架構大改；字母變 = 部署方式換**
+
+| Branch | 應用架構 | 部署基礎設施 | 變動層級 |
+|---|---|---|---|
+| 1 | 單體（monolith） | 直接執行 `python` | — |
+| 2a | 微服務（FastAPI × 4） | Docker Compose | 架構大改 → 數字進 2 |
+| 2b | 微服務（同 2a） | K8s（minikube） | 只換部署方式 → 加字母 b |
+| 3 | 事件驅動 + Serverless | 雲端 Function + Queue | 架構再大改 → 數字進 3 |
+
+**核心洞察：** 2a → 2b 的程式碼幾乎不動，Docker Image 是同一份；換的是 `docker-compose.yml` → K8s YAML。因此它們是同一個「v2 微服務架構」的兩種跑法，而非兩個不同版本。
+
+這個命名邏輯在企業環境中也很常見：同一份 Image 可以先在 Compose 本地驗證，再部署到 K8s 生產，應用層完全不改動。
+
+---
+
 ## FastAPI 服務設計
 
 **它是什麼：** Python 的輕量 web framework，用來把 agent 包成一個獨立的 HTTP 服務。  
