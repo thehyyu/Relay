@@ -13,6 +13,7 @@
 | Agent loop（ReAct pattern） | ✅ 完成 | AutoGen / LangGraph 的核心邏輯 |
 | Orchestrator pattern | ✅ 完成 | 企業 AI workflow 編排 |
 | FastAPI 服務設計 | 未開始 | 微服務 API 契約 |
+| Docker Image 與容器化 | 未開始 | 對標公司 Java WAR → Docker 遷移路徑 |
 | Docker Compose 多服務編排 | 未開始 | 本地模擬多容器環境 |
 | K8s：Deployment / Service / Ingress | 未開始 | 企業容器編排標準 |
 | K8s：rolling update / health check | 未開始 | 零停機部署 |
@@ -76,6 +77,42 @@ _（完成 Branch 1 後填寫）_
 
 **它是什麼：** Python 的輕量 web framework，用來把 agent 包成一個獨立的 HTTP 服務。  
 **為什麼用它：** v2 每個 agent 要能被其他服務呼叫，FastAPI 是最快的方式。  
+**學習後的體會：**  
+_（完成 Branch 2a 後填寫）_
+
+---
+
+## Docker Image 與容器化
+
+**它是什麼：** Image 是「程式碼 + 執行環境」的完整快照，Container 是 Image 的執行實例。
+
+**對應公司的 Java 產品演化路徑：**
+
+```
+WAR on VM（舊）
+  └── VM 裡裝好 JDK + Tomcat，再把 WAR 丟進去
+  └── 問題：環境靠人工維護，機器間不一致，擴展要複製整台 VM
+
+↓
+
+Docker Image（新）
+  └── JDK + Tomcat + WAR 全部打包成一個 Image
+  └── 任何有 Docker 的機器，跑起來都一樣
+  └── 擴展 = 多跑幾個 Container，不需要複製 OS
+
+↓
+
+K8s
+  └── 自動管理這些 Container：幾個副本、哪個掛了重啟、怎麼更新
+```
+
+**Image vs Container：**
+- Image = 食譜（靜態、不可變、可版本控制）
+- Container = 照食譜煮出來的菜（執行中的實例）
+- 一個 Image 可以同時跑出多個 Container（水平擴展的基礎）
+
+**為什麼用它：** Relay 的每個 agent 從 function 變成獨立 Image，才能做到「各自部署、各自擴展」，這就是 v2a 的目標。
+
 **學習後的體會：**  
 _（完成 Branch 2a 後填寫）_
 
