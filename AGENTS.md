@@ -217,13 +217,126 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 - [x] `uv` 安裝完成，可建立 venv 並安裝 `httpx`
 - [x] 一支測試腳本讀取 `OLLAMA_BASE_URL`，對 Ollama 送出 chat request 並拿到回應
 
-### Branch 1 DoD：
+### Branch 1 Spec：v1 Monolith 完整版
+
+**目標：** 在單一 Python process 內實作完整的 multi-agent ReAct pipeline，Search Agent 改用 ChromaDB 語意搜尋取代假資料。
+
+#### 目錄結構
+
+```
+v1/
+├── agents/
+│   ├── orchestrator.py   # ReAct loop + tool dispatch
+│   ├── search.py         # ChromaDB 語意搜尋
+│   ├── summarize.py      # Ollama 摘要（mistral:v0.3）
+│   └── write.py          # Ollama 寫作（mistral:v0.3）
+├── corpus/               # 靜態語料庫（.md 檔）
+├── scripts/
+│   └── index_corpus.py   # 一次性建立 ChromaDB index
+├── tests/
+│   └── test_orchestrator.py
+└── main.py               # 入口：讀 stdin 問題 → 呼叫 orchestrator → 印出答案
+```
+
+#### LLM 分工
+
+| Agent | 模型 | 理由 |
+|---|---|---|
+| Orchestrator | `qwen2.5:32b` | 需要 tool use 能力，大模型較可靠 |
+| Summarize / Write | `mistral:v0.3` | 單純文字生成，小模型速度快 |
+
+#### ReAct Loop 設計
+
+```
+messages = [system, user_question]
+for i in range(MAX_ITER):           # MAX_ITER = 6
+    response = LLM(messages, tools)
+    if no tool_calls:
+        return response.content      # 成功結束
+    for each tool_call:
+        result = dispatch(tool_name, args)
+        messages.append(tool_result)
+return "（超過最大迭代次數）"          # 失敗結束
+```
+
+#### Tools 定義
+
+| Tool | 輸入 | 輸出 |
+|---|---|---|
+| `search` | `query: str` | `list[str]`（最多 3 段落） |
+| `summarize` | `question: str, documents: list[str]` | `str` |
+| `write_answer` | `question: str, summary: str` | `str` |
+
+#### Branch 1 DoD：
 - [x] 語料庫已 index 進 ChromaDB，Search Agent 可做語意搜尋（不再用假資料）
 - [x] Orchestrator 用 ReAct pattern 驅動：LLM 透過 tool use 自行決定呼叫順序
 - [x] Agent loop 有明確終止條件：成功（LLM 無 tool call）、失敗（超過 MAX_ITER）
 - [x] 問語料庫內的問題，得到合理的完整回答
 - [x] 問語料庫外的問題，系統不崩潰（回傳「找不到相關資料」而非 exception）
 - [x] unit test 覆蓋：loop 終止條件、dispatch 路由邏輯
+
+### Branch 2a Spec：v2 Microservices — Docker Compose
+
+**目標：** 把 v1 的 4 個 Python 函式，各自包成獨立 FastAPI 服務，用 Docker Compose 一鍵啟動。
+
+#### 目錄結構
+
+```
+v2/
+├── services/
+│   ├── orchestrator/
+│   │   ├── main.py          # FastAPI + ReAct loop（HTTP 呼叫其他服務）
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── search/
+│   │   ├── main.py          # FastAPI + ChromaDB 查詢
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── summarize/
+│   │   ├── main.py          # FastAPI + Ollama 摘要
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   └── write/
+│       ├── main.py          # FastAPI + Ollama 寫作
+│       ├── Dockerfile
+│       └── requirements.txt
+└── docker-compose.yml
+```
+
+#### API 端點
+
+| 服務 | Port | 端點 | Method | 輸入 | 輸出 |
+|---|---|---|---|---|---|
+| orchestrator | 8000 | `/query` | POST | `{"question": "..."}` | `{"answer": "..."}` |
+| search | 8001 | `/search` | POST | `{"query": "..."}` | `{"documents": [...]}` |
+| summarize | 8002 | `/summarize` | POST | `{"question": "...", "documents": [...]}` | `{"summary": "..."}` |
+| write | 8003 | `/write` | POST | `{"question": "...", "summary": "..."}` | `{"answer": "..."}` |
+
+#### v1 → v2a 核心差異
+
+| | v1 | v2a |
+|---|---|---|
+| agent 呼叫方式 | `dispatch()` 直接呼叫 Python 函式 | orchestrator 發 HTTP POST 到各服務 |
+| 服務邊界 | 單一 process | 4 個獨立容器 |
+| ChromaDB | 直接讀本地路徑 | volume mount 進 search 容器 |
+| Ollama 位置 | localhost | `host.docker.internal`（容器存取宿主機） |
+
+#### 關鍵設計決策
+
+- **ChromaDB**：v1 已 index 好的 `chroma_db/` 以 volume 方式 mount 進 search 容器，不在容器內重新 index
+- **Ollama 連線**：容器內用 `host.docker.internal:11434` 存取宿主機 Ollama（Mac mini 原生支援）
+- **服務發現**：Docker Compose 網路內，服務間用 service name 互連（`http://search:8001`）
+- **v1 保留**：v1/ 目錄不動，v2/ 是全新目錄，兩個版本可以獨立執行
+
+#### Branch 2a DoD
+
+- [ ] `v2/` 目錄建立，4 個服務各有 `main.py`、`Dockerfile`、`requirements.txt`
+- [ ] `docker-compose.yml` 定義 4 個服務 + ChromaDB volume mount
+- [ ] `docker compose up --build` 啟動無報錯
+- [ ] `curl -X POST localhost:8000/query -H "Content-Type: application/json" -d '{"question":"什麼是 K8s？"}'` 回傳合理答案
+- [ ] `docker compose logs -f orchestrator` 看到 `[ITER N]` ReAct loop 輸出
+- [ ] 各服務端點的 unit test（FastAPI TestClient）
+- [ ] LEARNING.md 填寫 FastAPI / Docker Compose 學習體會
 
 ### 下一步
 - [ ] Branch 2a：v2 Microservices — Docker Compose
