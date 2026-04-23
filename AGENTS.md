@@ -141,6 +141,16 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 - [ ] Branch 0：環境就緒確認
 
 **Branch 0 DoD：**
-- [ ] Mac mini 上的 Ollama 服務可從開發機存取（`curl http://mac-mini:11434/api/tags` 回傳正常）
+- [ ] Mac mini 上 Ollama 綁定 Tailscale 介面（`OLLAMA_HOST` 設為 Mac mini 的 Tailscale IP），`curl $OLLAMA_BASE_URL/api/tags` 從 MacBook 回傳正常
+- [ ] `.env` 建立（不進 git），填入 `OLLAMA_BASE_URL`；`.env.example` 作為範本進 git
 - [ ] `uv` 安裝完成，可建立 venv 並安裝 `httpx`
-- [ ] 一支測試腳本對 Ollama 送出一個 chat request 並拿到回應
+- [ ] 一支測試腳本讀取 `OLLAMA_BASE_URL`，對 Ollama 送出 chat request 並拿到回應
+
+**連線架構（開發期）：**
+```
+MacBook → Tailscale → Mac mini ($OLLAMA_BASE_URL) → Ollama
+```
+
+**學習完之後的切換路徑：**
+- Mac mini 上移除 `OLLAMA_HOST` 設定，Ollama 回到 `localhost` only
+- Script 搬到 Mac mini 上直接執行（同 Echoforge poll.py 模式）
