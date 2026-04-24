@@ -16,6 +16,7 @@
 | FastAPI 服務設計 | ✅ 完成 | 微服務 API 契約 |
 | Docker Image 與容器化 | ✅ 完成 | 對標公司 Java WAR → Docker 遷移路徑 |
 | Docker Compose 多服務編排 | ✅ 完成 | 本地模擬多容器環境 |
+| Clean Architecture（Dependency Rule） | ✅ 完成 | Use Case 與 Infrastructure 解耦，提升可測試性 |
 | K8s：Deployment / Service / Ingress | 未開始 | 企業容器編排標準 |
 | K8s：rolling update / health check | 未開始 | 零停機部署 |
 | K8s：Application-level HA（replicas + probe） | 未開始 | Pod 失效自動重建、流量切換 |
@@ -302,7 +303,40 @@ orchestrator-1  | INFO: 172.18.0.1:42992 - "POST /query HTTP/1.1" 200 OK
 **v1 vs v2a 的關鍵差異：** v1 的 log 只有一個 process 的輸出；v2a 的 log 同時來自四個容器，而且可以清楚看到每次 tool 呼叫對應到哪個服務的 HTTP request（`POST /search`、`POST /summarize`、`POST /write`）。這就是微服務架構帶來的可觀察性：每個服務的 log 獨立，出問題時可以直接定位到哪個服務。
 
 **學習後的體會：**  
-_（完成 Branch 2a 後填寫）_
+實際跑起來才感受到 `docker compose logs` 同時混合四個服務輸出的威力：每次 orchestrator 發出 `TOOL: search(...)` 的下一行就出現 `search-1 | POST /search 200 OK`，一眼就能對應「哪個 tool call 打到哪個服務、花了多少時間」。這是把函式切成 HTTP 服務後免費得到的可觀察性，不需要額外工具。另一個具體體驗是 `depends_on` 的局限：它只等容器啟動，不等服務 ready，導致 orchestrator 搶先呼叫 search，但 search 還在載入 ONNX model 而 timeout。這個問題只有在多容器環境才會出現，解法是 FastAPI lifespan 預熱 + K8s readiness probe，兩者解決的是同一個問題，只是粒度不同。
+
+---
+
+## Clean Architecture：Use Case 不依賴 Infrastructure（Branch 2a+）
+
+**它是什麼：** Clean Architecture 的核心規則（Dependency Rule）：業務邏輯（Use Case）不應該知道資料是從 HTTP、資料庫還是本地函式來的。  
+**為什麼用它：** 讓 ReAct loop 可以在不啟動任何 HTTP 服務的情況下直接測試，只需傳入 mock callable。
+
+### 拆分前 vs 拆分後
+
+| | 拆分前（main.py） | 拆分後 |
+|---|---|---|
+| ReAct loop | 和 httpx、FastAPI 混在一起 | `react.py`，只依賴標準庫 |
+| HTTP 呼叫 | 散落在 `dispatch()` 和 loop 裡 | `clients.py`，全部集中 |
+| 測試 | 需要 `patch("httpx.post")` | 直接傳 mock callable，不碰 httpx |
+
+### 核心設計
+
+```python
+# react.py：不 import httpx，不 import fastapi
+def run_react_loop(
+    question: str,
+    dispatch: Callable[[str, dict], str],   # 工具呼叫
+    chat_fn: Callable[[list[dict]], dict],   # LLM 呼叫
+) -> str: ...
+
+# clients.py：所有 httpx 呼叫集中在這
+def make_dispatch(search_url, summarize_url, write_url) -> Callable: ...
+def make_chat_fn(ollama_url, model, tools) -> Callable: ...
+```
+
+**學習後的體會：**  
+最直接的感受是測試變了：原本測 dispatch 需要 `patch("httpx.post")`，現在測 ReAct loop 直接傳一個 lambda，完全不需要 mock 任何 infrastructure。這個設計的深層意義是：`react.py` 描述的是「agent 的決策邏輯」，`clients.py` 描述的是「如何跟外界溝通」。兩件事分開之後，K8s 的 retry、circuit breaker、correlation ID 全部可以加在 `clients.py` 裡，`react.py` 完全不動。這也是為什麼 Branch 2b 的大多數新功能（retry、health check、correlation ID）都只需要碰 `clients.py` 和外部 YAML，核心業務邏輯是穩定的。
 
 ---
 
