@@ -1,3 +1,4 @@
+import asyncio
 import os
 import chromadb
 from contextlib import asynccontextmanager
@@ -11,19 +12,22 @@ _collection = None
 _ready = False
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _init_chromadb():
     global _collection, _ready
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
     try:
+        client = chromadb.PersistentClient(path=CHROMA_PATH)
         _collection = client.get_collection("software_architecture")
         _collection.query(query_texts=["warmup"], n_results=1)
         _ready = True
         print("ChromaDB ready.", flush=True)
     except Exception as e:
-        # Collection 不存在時不 crash（K8s 初次部署 PVC 為空）
-        # 用 kubectl cp v1/chroma_db/. search-0:/data/chroma_db/ 後再重啟 pod
-        print(f"ChromaDB not ready: {e}", flush=True)
+        print(f"ChromaDB init failed: {e}", flush=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 背景執行 ChromaDB init，server 立即啟動可回應 livenessProbe
+    asyncio.create_task(_init_chromadb())
     yield
 
 
