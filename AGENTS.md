@@ -280,7 +280,7 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 ## 當前狀態
 
 **最後更新：** 2026-04-24  
-**目前進度：** Branch 2b 進行中（end-to-end 跑通，待 rolling update / kill pod 演練）
+**目前進度：** Branch 2b 完成 ✅
 
 ### 已完成
 - [x] Branch 0：環境就緒
@@ -510,9 +510,9 @@ async def add_request_id(request: Request, call_next):
 - [x] 4 個 agent 各有 Deployment YAML，ChromaDB 有 StatefulSet + PVC YAML
 - [x] `kubectl apply -f k8s/` 後，`kubectl get pods` 全部 Running
 - [x] `curl <minikube-ip>/query` 回傳合理答案（cluster 內 test-curl pod 驗證）
-- [ ] Rolling update 演練：更新一個服務的 image tag，觀察 pod 滾動替換過程
-- [ ] Kill pod 演練：`kubectl delete pod <search-pod>`，觀察自動重啟 + retry 恢復
-- [ ] LEARNING.md 填寫 K8s / Retry / Correlation ID 學習體會
+- [x] Rolling update 演練：更新一個服務的 image tag，觀察 pod 滾動替換過程
+- [x] Kill pod 演練：`kubectl delete pod <search-pod>`，觀察自動重啟 + retry 恢復
+- [x] LEARNING.md 填寫 K8s / Retry / Correlation ID 學習體會
 
 ---
 

@@ -580,8 +580,11 @@ kubectl set image deployment/orchestrator orchestrator=relay-orchestrator:v2b-ne
 kubectl rollout status deployment/orchestrator
 ```
 
-**學習後的體會：**  
-_（完成 Branch 2b 演練後填寫）_
+**學習後的體會：**
+
+Rolling update 在 1 個 replica 下替換太快，`kubectl get pods -w` 還沒開就換完了。從 Pod hash 的改變（`65c4fbbb7d-...` → `647dd8bc7-...`）可以確認是新 Pod，用 `curl /health` 看到 `"version": "v2b-r1"` 確認新版本真的上線。
+
+`kubectl rollout status` 是 CI/CD pipeline 的常客：它同步等待 rolling update 完成才退出，讓後續的 integration test 確保在新版本上跑，而非舊 Pod。
 
 ---
 
@@ -655,8 +658,27 @@ answer = await react.run_react_loop(req.question, dispatch, chat_fn)
 2. 手動 `kubectl delete pod <pod-name>` 模擬 pod 故障
 3. 觀察 K8s 自動重建，Service 持續可用
 
-**學習後的體會：**  
-_（完成 Branch 2b 後填寫）_
+**學習後的體會：**
+
+Kill pod 演練的實際輸出：
+
+```
+search-0   1/1 Running       ← 正常運行中
+search-0   1/1 Terminating   ← kubectl delete 觸發
+search-0   0/1 Completed     ← Pod 關閉中
+search-0   0/1 Pending       ← K8s 立刻建新 Pod（StatefulSet 保證同名）
+search-0   0/1 ContainerCreating
+search-0   0/1 Running       ← Container 啟動，readinessProbe 開始檢查
+search-0   1/1 Running       ← ChromaDB warmup 完成，開始接流量（共 12 秒）
+```
+
+三個關鍵觀察：
+
+1. **StatefulSet 保證同名**：新 Pod 還是叫 `search-0`，Deployment 的隨機名字（如 `orchestrator-647dd8bc7-...`）在 StatefulSet 這裡不適用。Pod 名字固定，PVC 自動重新掛回，資料完好。
+
+2. **readinessProbe 讓不可用時間最小化**：`0/1` 到 `1/1` 的 12 秒是 ChromaDB warmup，這段時間 Service 不會把流量送到這個 Pod。Ingress 層完全感知不到這個 Pod 死過一次。
+
+3. **tenacity retry 的意義**：這 12 秒內如果 orchestrator 剛好發出 search 請求，會暫時 503，tenacity 的 exponential backoff 會自動重試到 search ready 為止。這是 ADR-007 以外另一個讓系統有韌性的設計。
 
 ---
 
