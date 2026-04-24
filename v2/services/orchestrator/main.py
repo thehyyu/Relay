@@ -28,7 +28,7 @@ class QueryRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "v2b-r1"}
 
 
 @app.get("/health/live")

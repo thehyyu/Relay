@@ -509,8 +509,15 @@ curl -X POST http://$(minikube ip)/query \
   -d '{"question":"什麼是 K8s？"}'
 ```
 
-**學習後的體會：**  
-_（完成 Branch 2b 部署後填寫）_
+**學習後的體會：**
+
+實際部署踩了三個坑，每個都是 Docker Compose 時代不會遇到的：
+
+**坑一：PVC 第一次是空的。** `kubectl apply` 建好 StatefulSet 後，search-0 啟動時找不到 ChromaDB collection，直接 crash。原因是 PVC 是新申請的空白硬碟，需要手動把 v1 的語料庫 seed 進去：`kubectl cp v1/chroma_db/. search-0:/data/chroma_db/`。這個步驟只有第一次需要，之後 Pod 死掉重建資料都還在。
+
+**坑二：ONNX model 每次 Pod 啟動都重新下載（ADR-006）。** livenessProbe 的 `initialDelaySeconds` 不夠長，Pod 還在下載 79MB model 時就被判死、重啟、再下載，無限循環。解法是在 Dockerfile 的 build 階段就把 model 預熱進 image（`RUN python -c "... f(['warmup'])"`），把下載成本從「執行期每次啟動」移到「build 一次」。
+
+**坑三：kubectl port-forward 對長請求不穩定。** 後來改用 NodePort，再改用 cluster 內部 test-curl pod，最終靠在 cluster 內直接打 `http://orchestrator:8000` 驗通。
 
 ---
 
@@ -575,6 +582,65 @@ kubectl rollout status deployment/orchestrator
 
 **學習後的體會：**  
 _（完成 Branch 2b 演練後填寫）_
+
+---
+
+## asyncio Event Loop 阻塞診斷（Branch 2b 實戰）
+
+**問題現象：** `/query` 請求打進去，search → summarize 都正常，到 ITER 3（最後一次 LLM 推論）時 curl 回傳 `Empty reply from server`（HTTP 52），pod 以 Exit Code 137 重啟。
+
+**診斷關鍵：** 看 `kubectl logs` 時發現，request 進來後，連 `/health/ready` 的 access log 都完全消失，連一筆都沒有。這是決定性的診斷訊號：
+
+```
+INFO: GET /health/ready 200 OK   ← request 前有 probe log
+INFO: GET /health/ready 200 OK
+[START: 什麼是k8s?]
+[ITER 1] LLM → TOOL: search(...)
+[ITER 2] LLM → TOOL: summarize(...)
+[ITER 2] TOOL → LLM: (summarize 結果)
+← 此後完全沒有任何 probe log，直到 pod 被 kill
+```
+
+Readiness probe 每 5 秒、Liveness probe 每 10 秒都應該在 log 裡留下 access 記錄。如果全部消失，代表 **asyncio event loop 被阻塞**，uvicorn 完全無法處理任何新的請求，包括 health check。
+
+**Exit Code 137 的意義：** 128 + 9 = SIGKILL。K8s 發現 liveness probe 連續失敗 3 次，先送 SIGTERM，30 秒後 Python process 還沒退出（被 Ollama httpx 呼叫卡住），強制 SIGKILL。這不是 OOM（OOM kill 的 Reason 會是 `OOMKilled`，這裡是 `Error`）。
+
+**原來的做法：**
+```python
+# 理論上應該讓 event loop 自由，但實際上失效了
+loop = asyncio.get_event_loop()
+answer = await loop.run_in_executor(None, react.run_react_loop, ...)
+```
+
+`run_in_executor` 的設計是把阻塞工作丟到 thread pool，讓 event loop 繼續跑。但在這個案例中 event loop 還是被阻塞了，原因至今不完全清楚（可能與 httpx sync client 在某些情況下 interact 回 asyncio 有關）。
+
+**正確做法：全程 async**
+
+FastAPI 是 async 框架，HTTP 呼叫是 I/O bound 操作，本來就應該是 async：
+
+```python
+# clients.py：async def + httpx.AsyncClient
+async def chat_fn(messages):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(...)
+    return response.json()["message"]
+
+# react.py：async def run_react_loop
+async def run_react_loop(question, dispatch, chat_fn):
+    msg = await chat_fn(messages)   # 不阻塞 event loop
+    result = await dispatch(name, args)
+    ...
+
+# main.py：直接 await，不需要 run_in_executor
+answer = await react.run_react_loop(req.question, dispatch, chat_fn)
+```
+
+**修完後：** event loop 在 LLM 推論期間（可能 2-3 分鐘）仍能正常回應 health probe，pod 不再被誤殺，最終取得完整答案。
+
+**核心心法：**
+- `run_in_executor` 是讓舊有同步程式碼在 async 框架裡「勉強跑」的過渡手段
+- async 框架（FastAPI）+ 同步阻塞 I/O（sync httpx）= 遲早出問題
+- 診斷 event loop 是否被阻塞：看 health probe 的 access log 是否在 request 期間消失
 
 ---
 

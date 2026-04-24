@@ -279,8 +279,8 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 
 ## 當前狀態
 
-**最後更新：** 2026-04-23  
-**目前進度：** Branch 2b 進行中
+**最後更新：** 2026-04-24  
+**目前進度：** Branch 2b 進行中（end-to-end 跑通，待 rolling update / kill pod 演練）
 
 ### 已完成
 - [x] Branch 0：環境就緒
@@ -437,9 +437,9 @@ v2/services/orchestrator/
 
 #### Branch 2a+ DoD
 
-- [ ] orchestrator 拆成 main.py / react.py / clients.py，對外行為不變
-- [ ] react.py 的 unit test 直接傳 mock dispatch，不 mock httpx
-- [ ] `docker compose up --build` 仍正常，`curl /query` 仍回傳合理答案
+- [x] orchestrator 拆成 main.py / react.py / clients.py，對外行為不變
+- [x] react.py 的 unit test 直接傳 mock dispatch，不 mock httpx
+- [x] `docker compose up --build` 仍正常，`curl /query` 仍回傳合理答案
 
 ---
 
@@ -504,12 +504,12 @@ async def add_request_id(request: Request, call_next):
 
 #### Branch 2b DoD
 
-- [ ] 所有服務加 `/health/live` 和 `/health/ready`，search 的 ready 等 ChromaDB warmup 完成
-- [ ] orchestrator 加 Retry（tenacity），kill search pod 後自動重試恢復
-- [ ] orchestrator 加 Correlation ID middleware，`kubectl logs` 可 grep 跨服務 trace
-- [ ] 4 個 agent 各有 Deployment YAML，ChromaDB 有 StatefulSet + PVC YAML
-- [ ] `kubectl apply -f k8s/` 後，`kubectl get pods` 全部 Running
-- [ ] `curl <minikube-ip>/query` 回傳合理答案
+- [x] 所有服務加 `/health/live` 和 `/health/ready`，search 的 ready 等 ChromaDB warmup 完成
+- [x] orchestrator 加 Retry（tenacity），kill search pod 後自動重試恢復
+- [x] orchestrator 加 Correlation ID middleware，`kubectl logs` 可 grep 跨服務 trace
+- [x] 4 個 agent 各有 Deployment YAML，ChromaDB 有 StatefulSet + PVC YAML
+- [x] `kubectl apply -f k8s/` 後，`kubectl get pods` 全部 Running
+- [x] `curl <minikube-ip>/query` 回傳合理答案（cluster 內 test-curl pod 驗證）
 - [ ] Rolling update 演練：更新一個服務的 image tag，觀察 pod 滾動替換過程
 - [ ] Kill pod 演練：`kubectl delete pod <search-pod>`，觀察自動重啟 + retry 恢復
 - [ ] LEARNING.md 填寫 K8s / Retry / Correlation ID 學習體會
