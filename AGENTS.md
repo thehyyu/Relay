@@ -287,6 +287,8 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 - [x] Branch 0.5：曳光彈（pipeline 走通，Search Agent 使用假資料）
 - [x] Branch 1：v1 Monolith 完整版（ChromaDB + ReAct pattern + unit tests）
 - [x] Branch 2a：v2 Microservices — Docker Compose（4 個 FastAPI 服務 + 8 unit tests）
+- [x] Branch 2a+：Orchestrator 分層重構（react.py / clients.py / main.py，Clean Architecture）
+- [x] Branch 2b：v2 K8s — minikube 部署（rolling update / kill pod 演練完成）
 
 ### Branch 0 DoD：
 - [x] Mac mini 上 Ollama 綁定 Tailscale 介面（`OLLAMA_HOST` 設為 Mac mini 的 Tailscale IP），`curl $OLLAMA_BASE_URL/api/tags` 從 MacBook 回傳正常
@@ -447,6 +449,32 @@ v2/services/orchestrator/
 
 **目標：** 把 v2a 的 Docker Compose 部署遷移至 minikube，學習 K8s 核心資源物件，並加入分散式系統的韌性與可觀測性基礎設施。
 
+#### 目錄結構
+
+```
+v2/
+├── services/               # 程式碼與 v2a 相同，Dockerfile image tag 改為 :v2b
+│   ├── orchestrator/
+│   │   ├── main.py         # 新增：health endpoints、Correlation ID middleware、async httpx
+│   │   ├── react.py        # 新增：async def run_react_loop（ADR-007）
+│   │   ├── clients.py      # 新增：tenacity retry、X-Request-ID header、async httpx
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── search/
+│   │   ├── main.py         # 新增：lifespan asyncio.create_task、/health/live、/health/ready
+│   │   ├── Dockerfile      # 新增：RUN 預載 ONNX model（ADR-006）
+│   │   └── requirements.txt
+│   ├── summarize/          # 新增：/health/live、/health/ready
+│   └── write/              # 新增：/health/live、/health/ready
+└── k8s/
+    ├── configmap.yaml          # 所有服務共用的環境變數（OLLAMA_BASE_URL 等）
+    ├── orchestrator-deployment.yaml  # Deployment + NodePort Service
+    ├── search-statefulset.yaml       # StatefulSet + PVC + Service
+    ├── summarize-deployment.yaml     # Deployment + Service
+    ├── write-deployment.yaml         # Deployment + Service
+    └── ingress.yaml                  # 外部流量入口（/query、/health）
+```
+
 #### 學習重點
 
 | 概念 | 對應工作 |
@@ -531,8 +559,7 @@ async def add_request_id(request: Request, call_next):
 ---
 
 ### 下一步
-- [ ] Branch 2a+：v2a 收尾 — Orchestrator 分層重構
-- [ ] Branch 2b：v2 K8s — 遷移至 minikube
+- [ ] Branch 3：v3 Hybrid — 事件驅動 + Serverless + Claude API
 
 **連線架構（開發期）：**
 ```
