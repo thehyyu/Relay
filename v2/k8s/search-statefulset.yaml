@@ -31,7 +31,7 @@ spec:
           httpGet:
             path: /health/live
             port: 8001
-          initialDelaySeconds: 5
+          initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:          # 就緒探針：ChromaDB warmup 完成才 200，才開始接流量
           httpGet:

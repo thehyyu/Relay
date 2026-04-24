@@ -226,6 +226,23 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 
 ---
 
+### ADR-006：將 ONNX embedding model 預載進 Docker image
+
+**狀態：** accepted
+
+**背景：** v2b 遷移至 K8s 後，search pod 每次啟動都需從網路下載 ONNX model（79MB）。Docker Compose 時代此問題被隱藏，因為沒有 livenessProbe——容器慢慢啟動也沒人砍它。K8s 的 livenessProbe 在下載完成前就判定 pod 不健康並重啟，導致無限 CrashLoopBackOff。
+
+**選項：**
+- A：調大 `initialDelaySeconds`（如 360 秒）給下載留時間
+- B：在 Dockerfile 加一行 `RUN python -c "..."` 於 build 時預載 model
+- C：另開 PVC 掛 `/root/.cache/chroma` 讓 model cache 持久化
+
+**決策：** 選 B。選 A 是魔法數字，不治根本，且每次 pod 重啟仍需下載。選 C 增加一個額外 PVC 的管理複雜度。選 B 一行 Dockerfile，符合「依賴打進 image」的容器化原則，同時改善 v2a 的冷啟動體驗。
+
+**影響：** search image 增大約 80MB，但 pod 啟動時無需下載，livenessProbe 可設合理的 initialDelaySeconds（30 秒）。這也是 K8s 把 Docker Compose 裡被掩蓋的問題暴露出來的典型案例：v2a 的隱藏假設「容器可以慢慢啟動」在 K8s 的 probe 機制下不再成立。
+
+---
+
 ## AI 協作守則
 
 1. **最小修改原則：** 每次只做達成當前節點的最小修改，不動無關模組
