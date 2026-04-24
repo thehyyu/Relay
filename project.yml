@@ -1,0 +1,18 @@
+slug: relay
+title_zh: Relay — Multi-Agent 系統架構演化實驗
+title_en: Relay — Multi-Agent System Across Three Deployment Architectures
+tagline_zh: 用三種部署架構學習 Multi-Agent 系統演化
+tagline_en: Same agent pipeline, evolved across Monolith, Docker Compose, and Kubernetes
+tech_stack:
+  - Python
+  - FastAPI
+  - Ollama
+  - ChromaDB
+  - Docker Compose
+  - Kubernetes (minikube)
+  - httpx
+  - tenacity
+github_url: https://github.com/thehyyu/Relay
+demo_url: ""
+status: active
+started_at: "2026-04"
