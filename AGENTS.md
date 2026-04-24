@@ -243,6 +243,29 @@ Branch 4    收尾：架構圖、README、blog 素材整理
 
 ---
 
+### ADR-007：Orchestrator HTTP 呼叫改為 async httpx
+
+**狀態：** accepted
+
+**背景：** v2b 部署後，orchestrator 的 `/query` 請求固定在 ITER 3（最後一次 Ollama 呼叫）後回傳 `Empty reply from server`，pod 同時以 Exit Code 137（SIGKILL）重啟。診斷發現 `kubectl logs` 在 request 進來後完全停止印出 liveness / readiness probe 的 access log，確認是 asyncio event loop 被阻塞，導致 `/health/live` 無法回應，K8s 誤判 pod 不健康並重啟。
+
+原實作：`react.run_react_loop()` 是同步函式，內含同步 `httpx.post()` 呼叫；在 FastAPI 的 async handler 裡用 `asyncio.get_event_loop().run_in_executor()` 將其丟到 thread pool 執行，理論上不應阻塞 event loop。
+
+**選項：**
+- A：維持 `run_in_executor`，改換 `requests` 函式庫取代 `httpx`（排除 httpx 與 asyncio 互動的可能性）
+- B：改用 `asyncio.get_running_loop()`（修正 deprecated API），加大 livenessProbe 容忍度作為緩衝
+- C：整個 react loop 改為 async：`chat_fn` 和 `dispatch` 都改 `async def`，使用 `httpx.AsyncClient`，直接 `await react.run_react_loop()`，移除 `run_in_executor`
+
+**決策：** 選 C。`run_in_executor` 是讓同步阻塞程式碼在 async 框架中「勉強運作」的變通手段，而非正確設計。FastAPI 是 async 框架，HTTP 呼叫是 I/O 密集操作，理應全程 async。選 A / B 只是掩蓋問題，不解決根本。
+
+**影響：**
+- `react.py` 的 `run_react_loop` 改為 `async def`，所有 `dispatch()` / `chat_fn()` 呼叫加 `await`
+- `clients.py` 的所有 httpx 呼叫改用 `httpx.AsyncClient`，tenacity `@retry` 自動支援 async 函式
+- `main.py` 移除 `asyncio.get_running_loop()` 和 `run_in_executor`，直接 `await react.run_react_loop(...)`
+- Event loop 不再被阻塞，liveness probe 在 LLM 推論期間（可能長達數分鐘）仍正常回應
+
+---
+
 ## AI 協作守則
 
 1. **最小修改原則：** 每次只做達成當前節點的最小修改，不動無關模組

@@ -1,4 +1,3 @@
-import asyncio
 import os
 import uuid
 from fastapi import FastAPI, Request
@@ -48,8 +47,10 @@ async def query(req: QueryRequest, request: Request):
     print(f"[{request_id}] START: {req.question[:60]}", flush=True)
     dispatch = clients.make_dispatch(SEARCH_URL, SUMMARIZE_URL, WRITE_URL, request_id=request_id)
     chat_fn = clients.make_chat_fn(OLLAMA_BASE_URL, react.OLLAMA_MODEL, react.TOOLS)
-    # run_react_loop 含所有 httpx 呼叫都是同步阻塞，用 run_in_executor 丟到 thread pool
-    # 避免鎖住 event loop 導致 port-forward keepalive 超時斷線
-    loop = asyncio.get_event_loop()
-    answer = await loop.run_in_executor(None, react.run_react_loop, req.question, dispatch, chat_fn)
+    try:
+        answer = await react.run_react_loop(req.question, dispatch, chat_fn)
+    except Exception as e:
+        print(f"[{request_id}] ERROR: {type(e).__name__}: {e}", flush=True)
+        raise
+    print(f"[{request_id}] DONE: {answer[:60]}", flush=True)
     return {"answer": answer}

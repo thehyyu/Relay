@@ -57,7 +57,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def run_react_loop(
+async def run_react_loop(
     question: str,
     dispatch: Callable[[str, dict], str],
     chat_fn: Callable[[list[dict]], dict],
@@ -68,7 +68,7 @@ def run_react_loop(
     ]
 
     for i in range(MAX_ITER):
-        msg = chat_fn(messages)
+        msg = await chat_fn(messages)
         messages.append(msg)
 
         if not msg.get("tool_calls"):
@@ -82,7 +82,7 @@ def run_react_loop(
             if isinstance(args, str):
                 args = json.loads(args)
             print(f"[ITER {i+1}] LLM → TOOL: {name}({json.dumps(args, ensure_ascii=False)})", flush=True)
-            result = dispatch(name, args)
+            result = await dispatch(name, args)
             preview = result[:120] + "..." if len(result) > 120 else result
             print(f"[ITER {i+1}] TOOL → LLM: {preview}", flush=True)
             messages.append({"role": "tool", "content": result})
