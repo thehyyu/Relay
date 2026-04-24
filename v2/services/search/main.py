@@ -15,10 +15,15 @@ _ready = False
 async def lifespan(app: FastAPI):
     global _collection, _ready
     client = chromadb.PersistentClient(path=CHROMA_PATH)
-    _collection = client.get_collection("software_architecture")
-    _collection.query(query_texts=["warmup"], n_results=1)
-    _ready = True
-    print("ChromaDB ready.", flush=True)
+    try:
+        _collection = client.get_collection("software_architecture")
+        _collection.query(query_texts=["warmup"], n_results=1)
+        _ready = True
+        print("ChromaDB ready.", flush=True)
+    except Exception as e:
+        # Collection 不存在時不 crash（K8s 初次部署 PVC 為空）
+        # 用 kubectl cp v1/chroma_db/. search-0:/data/chroma_db/ 後再重啟 pod
+        print(f"ChromaDB not ready: {e}", flush=True)
     yield
 
 
