@@ -347,6 +347,38 @@ def make_chat_fn(ollama_url, model, tools) -> Callable: ...
 
 ---
 
+### minikube 的層次結構
+
+minikube 讓你在本機建一個「假的 K8s cluster」學習用。`--driver=docker` 的意思是：**用一個 Docker container 來模擬一台 K8s Node**。
+
+```
+Mac mini（實體機）
+└── Colima VM（輕量 Linux VM，提供 Linux kernel）
+    └── Docker daemon（跑在 Colima VM 裡）
+        └── minikube-node container（這個 container 模擬一台 K8s Node）
+            └── K8s cluster（跑在這個 container 裡）
+                ├── orchestrator Pod
+                ├── search Pod
+                ├── summarize Pod
+                └── write Pod
+```
+
+K8s 在企業裡跑在真實的多台機器（Node）上；minikube 用一個 Docker container 假裝成一台 Node，讓你用 `kubectl` 練習完整的 K8s 操作。
+
+**v2a vs v2b 的層次對比：**
+
+```
+v2a（Docker Compose）：
+  Docker daemon → 直接管 4 個服務 container
+
+v2b（minikube）：
+  Docker daemon → minikube-node container → K8s → 4 個服務 Pod
+```
+
+多了一層 K8s 在中間，換來的是 rolling update、replica 管理、readiness probe 這些 Docker Compose 做不到的能力。
+
+---
+
 ### Pod 是什麼？
 
 **Pod 是 K8s 的最小部署單位**，等同於 Docker 的 container（實務上 Relay 每個 Pod 只有一個 container）。
@@ -408,6 +440,30 @@ StatefulSet: search-0 死掉               → search-0（同名字，同 PVC，
 PVC（PersistentVolumeClaim）是「向 K8s 申請一塊硬碟」的申請書。你說「我要 500Mi」，K8s 幫你找一塊實際的硬碟（PV）給你，Pod 掛上去用。Pod 刪掉，硬碟裡的資料還在。
 
 StatefulSet 的 `volumeClaimTemplates` 讓每個 Pod 自動申請自己專屬的 PVC，不需要手動建立。
+
+---
+
+### kubectl apply：宣告式管理
+
+`kubectl apply -f k8s/` 是把 `k8s/` 目錄裡所有 YAML 送給 K8s，K8s 讀完後把裡面定義的資源全部建立起來。
+
+```bash
+# Docker Compose（命令式）
+docker compose up       # 直接啟動服務
+
+# K8s（宣告式）
+kubectl apply -f k8s/  # 宣告你要的狀態，K8s 負責讓現實符合宣告
+```
+
+**宣告式（Declarative）vs 命令式（Imperative）** 是 K8s 和 Docker Compose 最根本的設計差異：
+
+| | Docker Compose | K8s |
+|---|---|---|
+| 你說的是 | 「執行這些步驟」 | 「我要這個狀態」 |
+| Pod 死掉 | 不管（你要手動重啟） | K8s 自動補一個，維持宣告的數量 |
+| 改設定 | 重跑指令 | 改 YAML 再 apply，K8s 算出 diff 只改必要的部分 |
+
+例如你的 YAML 宣告「我要 2 個 orchestrator Pod」，K8s 會建 Pod 直到數量變 2。之後某個 Pod 死掉，K8s 自動補一個，永遠維持宣告的狀態——這就是 K8s 自癒能力的根源。
 
 ---
 
