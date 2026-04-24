@@ -1,28 +1,54 @@
 import json
 import httpx
 from typing import Callable
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 
-def make_dispatch(search_url: str, summarize_url: str, write_url: str) -> Callable[[str, dict], str]:
+def make_dispatch(
+    search_url: str,
+    summarize_url: str,
+    write_url: str,
+    request_id: str = "",
+) -> Callable[[str, dict], str]:
+    headers = {"X-Request-ID": request_id} if request_id else {}
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
+    def call_search(query: str) -> str:
+        r = httpx.post(f"{search_url}/search", json={"query": query}, headers=headers, timeout=120)
+        r.raise_for_status()
+        return json.dumps(r.json()["documents"], ensure_ascii=False)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
+    def call_summarize(question: str, documents: list) -> str:
+        r = httpx.post(
+            f"{summarize_url}/summarize",
+            json={"question": question, "documents": documents},
+            headers=headers,
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.json()["summary"]
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=10))
+    def call_write(question: str, summary: str) -> str:
+        r = httpx.post(
+            f"{write_url}/write",
+            json={"question": question, "summary": summary},
+            headers=headers,
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.json()["answer"]
+
     def dispatch(tool_name: str, args: dict) -> str:
         if tool_name == "search":
-            r = httpx.post(f"{search_url}/search", json={"query": args["query"]}, timeout=120)
-            return json.dumps(r.json()["documents"], ensure_ascii=False)
+            return call_search(args["query"])
         if tool_name == "summarize":
-            r = httpx.post(
-                f"{summarize_url}/summarize",
-                json={"question": args["question"], "documents": args["documents"]},
-                timeout=60,
-            )
-            return r.json()["summary"]
+            return call_summarize(args["question"], args["documents"])
         if tool_name == "write_answer":
-            r = httpx.post(
-                f"{write_url}/write",
-                json={"question": args["question"], "summary": args["summary"]},
-                timeout=60,
-            )
-            return r.json()["answer"]
+            return call_write(args["question"], args["summary"])
         return f"unknown tool: {tool_name}"
+
     return dispatch
 
 

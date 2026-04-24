@@ -1,6 +1,6 @@
 import os
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -18,8 +18,21 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/health/live")
+def health_live():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready():
+    return {"status": "ok"}
+
+
 @app.post("/write")
-def write(req: WriteRequest):
+def write(req: WriteRequest, request: Request):
+    request_id = request.headers.get("X-Request-ID", "")
+    if request_id:
+        print(f"[{request_id}] write: {req.question[:60]}", flush=True)
     response = httpx.post(
         f"{OLLAMA_BASE_URL}/api/chat",
         json={

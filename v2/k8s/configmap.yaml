@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: relay-config
+data:
+  SEARCH_URL: "http://search:8001"
+  SUMMARIZE_URL: "http://summarize:8002"
+  WRITE_URL: "http://write:8003"
+  CHROMA_PATH: "/data/chroma_db"
+  OLLAMA_BASE_URL: "http://host.minikube.internal:11434"

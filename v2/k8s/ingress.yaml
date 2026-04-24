@@ -1,0 +1,24 @@
+# Ingress：外部流量的進入點，根據路徑把請求分派給對應的 Service。
+# 使用前需啟用 minikube ingress addon：minikube addons enable ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: relay-ingress
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /query
+        pathType: Prefix
+        backend:
+          service:
+            name: orchestrator
+            port:
+              number: 8000
+      - path: /health
+        pathType: Prefix
+        backend:
+          service:
+            name: orchestrator
+            port:
+              number: 8000

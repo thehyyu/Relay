@@ -1,0 +1,61 @@
+# StatefulSet：search 是有狀態服務（需要持久化 ChromaDB 資料），所以用 StatefulSet 而非 Deployment。
+# StatefulSet 保證 Pod 名稱固定（search-0）、PVC 跟著 Pod 走，重建後資料不會消失。
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: search
+spec:
+  serviceName: search      # 必須和下方 Service 的 name 一致
+  replicas: 1
+  selector:
+    matchLabels:
+      app: search
+  template:
+    metadata:
+      labels:
+        app: search
+    spec:
+      containers:
+      - name: search
+        image: relay-search:v2b
+        imagePullPolicy: Never   # 使用 minikube 本地 build 的 image，不去 Docker Hub 拉
+        ports:
+        - containerPort: 8001
+        envFrom:
+        - configMapRef:
+            name: relay-config   # 從 ConfigMap 注入所有環境變數
+        volumeMounts:
+        - name: chroma-data
+          mountPath: /data/chroma_db
+        livenessProbe:           # 存活探針：只要 process 還在就 200，K8s 不重啟
+          httpGet:
+            path: /health/live
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:          # 就緒探針：ChromaDB warmup 完成才 200，才開始接流量
+          httpGet:
+            path: /health/ready
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 24   # 最多等 2 分鐘（24 × 5s）給 ONNX model 載入
+  volumeClaimTemplates:          # StatefulSet 專屬：每個 Pod 自動申請一塊 PVC
+  - metadata:
+      name: chroma-data
+    spec:
+      accessModes: ["ReadWriteOnce"]   # 同時只能被一個 Pod 掛載（單一 replica 夠用）
+      resources:
+        requests:
+          storage: 500Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+spec:
+  selector:
+    app: search
+  ports:
+  - port: 8001
+    targetPort: 8001

@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI
+import uuid
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 import react  # type: ignore[import]
 import clients  # type: ignore[import]
@@ -12,6 +13,15 @@ SUMMARIZE_URL = os.getenv("SUMMARIZE_URL", "http://summarize:8002")
 WRITE_URL = os.getenv("WRITE_URL", "http://write:8003")
 
 
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
 class QueryRequest(BaseModel):
     question: str
 
@@ -21,9 +31,21 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/health/live")
+def health_live():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready():
+    return {"status": "ok"}
+
+
 @app.post("/query")
-def query(req: QueryRequest):
-    dispatch = clients.make_dispatch(SEARCH_URL, SUMMARIZE_URL, WRITE_URL)
+async def query(req: QueryRequest, request: Request):
+    request_id = request.state.request_id
+    print(f"[{request_id}] START: {req.question[:60]}", flush=True)
+    dispatch = clients.make_dispatch(SEARCH_URL, SUMMARIZE_URL, WRITE_URL, request_id=request_id)
     chat_fn = clients.make_chat_fn(OLLAMA_BASE_URL, react.OLLAMA_MODEL, react.TOOLS)
     answer = react.run_react_loop(req.question, dispatch, chat_fn)
     return {"answer": answer}

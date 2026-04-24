@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: write
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: write
+  template:
+    metadata:
+      labels:
+        app: write
+    spec:
+      containers:
+      - name: write
+        image: relay-write:v2b
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8003
+        envFrom:
+        - configMapRef:
+            name: relay-config
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8003
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8003
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: write
+spec:
+  selector:
+    app: write
+  ports:
+  - port: 8003
+    targetPort: 8003
