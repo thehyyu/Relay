@@ -17,9 +17,9 @@
 | Docker Image 與容器化 | ✅ 完成 | 對標公司 Java WAR → Docker 遷移路徑 |
 | Docker Compose 多服務編排 | ✅ 完成 | 本地模擬多容器環境 |
 | Clean Architecture（Dependency Rule） | ✅ 完成 | Use Case 與 Infrastructure 解耦，提升可測試性 |
-| K8s：Deployment / Service / Ingress | 未開始 | 企業容器編排標準 |
-| K8s：rolling update / health check | 未開始 | 零停機部署 |
-| K8s：Application-level HA（replicas + probe） | 未開始 | Pod 失效自動重建、流量切換 |
+| K8s：Deployment / Service / Ingress | 🔄 進行中 | 企業容器編排標準 |
+| K8s：rolling update / health check | 🔄 進行中 | 零停機部署 |
+| K8s：Application-level HA（replicas + probe） | 🔄 進行中 | Pod 失效自動重建、流量切換 |
 | DB 主從式架構（Primary-Replica） | 另立專案 | 客戶端備援設計最常被問的題目 |
 | Message queue（RabbitMQ / Redis） | 未開始 | Azure Service Bus / AWS SQS / Kafka |
 | Serverless function 觸發 | 未開始 | Azure Functions / Lambda |
@@ -340,21 +340,185 @@ def make_chat_fn(ollama_url, model, tools) -> Callable: ...
 
 ---
 
-## K8s：Deployment / Service / Ingress
+## K8s：核心概念與 Docker Compose 對照
 
-**它是什麼：** Kubernetes 的三個核心物件：Deployment 管 pod 生命週期，Service 管服務發現，Ingress 管外部流量進入。  
-**為什麼用它：** 企業容器編排的業界標準，把 Docker Compose 的概念升級到可擴展、可自癒的版本。  
-**學習後的體會：**  
-_（完成 Branch 2b 後填寫）_
+**它是什麼：** Kubernetes 是容器編排平台，把「多個容器如何一起跑」這件事從手動管理升級到自動化。  
+**為什麼用它：** 企業容器編排的業界標準。Docker Compose 解決「本地多服務同時跑」，K8s 解決「生產環境的高可用、自癒、滾動更新」。
 
 ---
 
-## K8s：rolling update / health check
+### Pod 是什麼？
 
-**它是什麼：** Rolling update 讓服務在更新時逐步替換 pod，不中斷服務；health check 讓 K8s 知道哪些 pod 可以接流量。  
-**為什麼用它：** 零停機部署的核心機制，面試必問。  
+**Pod 是 K8s 的最小部署單位**，等同於 Docker 的 container（實務上 Relay 每個 Pod 只有一個 container）。
+
+差異是：Pod 有**身份**，由 K8s 管理——決定它跑在哪台機器、死掉要不要重建、要跑幾個副本。Docker container 只是你手動跑的一個盒子，死了就死了。
+
+```
+Docker:  docker run relay-search    → container（你管）
+K8s:     kubectl apply search.yaml  → Pod（K8s 管）
+```
+
+---
+
+### Docker Compose → K8s 概念對照
+
+| Docker Compose | K8s 對應 | 說明 |
+|---|---|---|
+| `services:` 裡的服務名稱 | **Service（ClusterIP）** | cluster 內部服務發現，`http://search:8001` |
+| `ports: "8000:8000"` | **Ingress** | 外部流量進入點，加了路徑分流能力 |
+| `environment:` | **ConfigMap** | 設定值獨立成資源，多個 Pod 共用 |
+| `volumes:` | **PVC（PersistentVolumeClaim）** | 向 K8s 申請一塊持久化硬碟 |
+| `build:` + container | **Deployment** 或 **StatefulSet** | 管 Pod 的生命週期 |
+| `depends_on:` | **readinessProbe** | Compose 只等容器啟動；K8s 等服務真正 ready |
+
+---
+
+### Ingress 不只是「開 port」
+
+Docker Compose 的 `ports: "8000:8000"` 是直接把 container port 打洞到宿主機，外面只能連那個 port。
+
+Ingress 更像 nginx reverse proxy：一個入口，根據**路徑**或 **domain** 分派流量給不同 Service：
+
+```
+外部 POST /query  →  Ingress  →  orchestrator Service  →  orchestrator Pod
+外部 GET  /health →  Ingress  →  orchestrator Service  →  orchestrator Pod
+（未來可以加）
+外部 GET  /search →  Ingress  →  search Service        →  search Pod
+```
+
+---
+
+### Deployment vs StatefulSet
+
+**Deployment（無狀態服務）：**  
+Pod 是可拋棄的，死了 K8s 建一個新的，名字隨機，沒有固定身份。適合 orchestrator、summarize、write。
+
+**StatefulSet（有狀態服務）：**  
+Pod 有固定名稱（`search-0`），綁定專屬 PVC。Pod 死掉重建後名字不變、掛回同一塊硬碟，資料不消失。適合 search（ChromaDB 資料）、資料庫（MySQL、Redis）。
+
+```
+Deployment:  orchestrator-7f9b2-xkp3q 死掉 → orchestrator-7f9b2-mn4rs（新名字，一樣）
+StatefulSet: search-0 死掉               → search-0（同名字，同 PVC，資料還在）
+```
+
+---
+
+### PVC 是什麼？
+
+PVC（PersistentVolumeClaim）是「向 K8s 申請一塊硬碟」的申請書。你說「我要 500Mi」，K8s 幫你找一塊實際的硬碟（PV）給你，Pod 掛上去用。Pod 刪掉，硬碟裡的資料還在。
+
+StatefulSet 的 `volumeClaimTemplates` 讓每個 Pod 自動申請自己專屬的 PVC，不需要手動建立。
+
+---
+
+### host.minikube.internal
+
+從 minikube Pod 內部連到宿主機（Mac mini）的 hostname，等同於 Docker Compose 的 `host.docker.internal`：
+
+| 環境 | 連到宿主機的寫法 |
+|---|---|
+| Docker Compose | `host.docker.internal` |
+| minikube（K8s） | `host.minikube.internal` |
+
+Relay 的 ConfigMap 用這個連到 Mac mini 上的 Ollama，不需要 hardcode IP。
+
+---
+
+### 部署步驟（v2b）
+
+```bash
+# 一次性準備
+minikube start --driver=docker
+minikube addons enable ingress
+eval $(minikube docker-env)   # 切換 Docker CLI 指向 minikube daemon
+
+# 在 v2/ 目錄下 build image（指向 minikube daemon，image 直接在 cluster 裡）
+docker build -t relay-search:v2b        ./services/search
+docker build -t relay-summarize:v2b     ./services/summarize
+docker build -t relay-write:v2b         ./services/write
+docker build -t relay-orchestrator:v2b  ./services/orchestrator
+
+# Apply 所有 K8s 資源
+kubectl apply -f k8s/
+
+# 等 pod 全部 Running
+kubectl get pods -w
+
+# 第一次：seed ChromaDB 資料進 PVC（等 search-0 Running 後）
+kubectl cp v1/chroma_db/. search-0:/data/chroma_db/
+
+# 測試
+curl -X POST http://$(minikube ip)/query \
+  -H "Content-Type: application/json" \
+  -d '{"question":"什麼是 K8s？"}'
+```
+
 **學習後的體會：**  
-_（完成 Branch 2b 後填寫）_
+_（完成 Branch 2b 部署後填寫）_
+
+---
+
+## K8s：Liveness / Readiness Probe 與 Rolling Update
+
+**它是什麼：** K8s 透過兩個 HTTP 探針決定 Pod 的狀態；Rolling update 讓服務更新時逐步替換 Pod，不中斷服務。  
+**為什麼用它：** 零停機部署的核心機制，面試必問。
+
+---
+
+### Liveness vs Readiness：為什麼要分兩個？
+
+| 探針 | 問的問題 | 失敗的後果 | 對應端點 |
+|---|---|---|---|
+| **livenessProbe** | Process 還活著嗎？ | K8s **重啟** Pod | `/health/live` |
+| **readinessProbe** | 可以接流量嗎？ | K8s 把 Pod **從 Service 移除**（不重啟） | `/health/ready` |
+
+兩個分開的原因：有些服務啟動時需要暖機（如 search 載入 ONNX model，要等 120 秒），暖機期間 process 是活的（不該重啟），但還沒準備好接流量（不該讓 Ingress 送請求過來）。
+
+```
+search Pod 啟動
+    ↓
+livenessProbe /health/live → 200（process 活著，K8s 不重啟）
+readinessProbe /health/ready → 503（ChromaDB 還在載入，不接流量）
+    ↓
+ChromaDB warmup 完成，_ready = True
+    ↓
+readinessProbe /health/ready → 200（加入 Service，開始接流量）
+```
+
+這個模式和 Branch 2a 用 FastAPI `lifespan` 解決 ONNX 冷啟動是同一個思路，K8s 只是把它標準化了。
+
+---
+
+### Rolling Update 是什麼？
+
+更新 image 時，K8s 不是把所有 Pod 一次砍掉重建，而是逐一替換：
+
+```
+更新前：[orchestrator-v1] [orchestrator-v1] [orchestrator-v1]
+
+替換第一個：
+[orchestrator-v2] [orchestrator-v1] [orchestrator-v1]  ← v2 readiness OK 後才換下一個
+
+替換第二個：
+[orchestrator-v2] [orchestrator-v2] [orchestrator-v1]
+
+完成：
+[orchestrator-v2] [orchestrator-v2] [orchestrator-v2]
+```
+
+整個過程中永遠有 Pod 在服務，使用者感受不到中斷。**readinessProbe 是 rolling update 的關鍵**：K8s 等新 Pod ready 才繼續換下一個，確保不會在新 Pod 還沒暖機時就把舊 Pod 砍掉。
+
+**演練指令：**
+```bash
+# 改 image tag 觸發 rolling update
+kubectl set image deployment/orchestrator orchestrator=relay-orchestrator:v2b-new
+
+# 觀察滾動替換過程
+kubectl rollout status deployment/orchestrator
+```
+
+**學習後的體會：**  
+_（完成 Branch 2b 演練後填寫）_
 
 ---
 
